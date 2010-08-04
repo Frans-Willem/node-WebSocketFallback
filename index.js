@@ -10,15 +10,15 @@ window.onload=function() {
 	var ws=new WebSocket("ws://"+document.location.host+"/connectHere");
 	ws.onopen=function(event) {
 		log("onOpen",arguments.length);
+		ws.send("Multiple packets");
+		var pack=1;
+		setInterval(function() {
+			ws.send("Multiple packets delayed "+(pack++));
+		},250);
 	}
 	ws.onmessage=function(event) {
 		log("onMessage",arguments.length,event.data);
 		ws.send("Echo: "+event.data);
-		ws.send("Multiple packets");
-		setInterval(function() {
-			ws.send("Multiple packets delayed 1");
-			ws.send("Multiple packets delayed 2");
-		},500);
 	}
 	ws.onerror=function(event) {
 		log("onError");
