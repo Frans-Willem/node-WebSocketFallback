@@ -1,0 +1,34 @@
+exports:
+	createServer returns WebsocketServer
+WebSocketServer:
+	handleRequest(request,socket,head)
+	event "request": WebSocketRequest, WebSocketResponse
+	event "clientError"
+WebSocketRequest:
+	.method
+	.url
+	.headers
+	.httpVersion
+	.connection
+WebSocketResponse:
+v	.writeHead(code,headers);
+v	.accept(protocol,headers);
+v	.write() //Will either send a WebSocket packet, or a simple HTTP packet
+v	.end();
+v	event "data" (data)
+v	event "end" ()
+v	event "timeout"()
+v	event "drain" ()
+v	event "error"(exception)
+v	event "close"(had_error)
+v	.remoteAddress
+v	.readyState
+v	.destroy()
+v	.pause()
+v	.resume()
+v	.setTimeout()
+v	.setNoDelay()
+v	.setKeepAlive()
+v	.writeable
+	.readable (should wire up with end event to be non-readable)
+v	.setEncoding
