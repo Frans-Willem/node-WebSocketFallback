@@ -104,6 +104,7 @@ var responseTypes={
 	closed: 3
 };
 function WebSocketResponse(request,socket,head,handshakeData) {
+	var self=this;
 	EventEmitter.call(this);
 	this.socket=socket;
 	this.handshakeData=handshakeData;
@@ -112,6 +113,15 @@ function WebSocketResponse(request,socket,head,handshakeData) {
 	this.request=request;
 	
 	this.remoteAddress=socket.remoteAddress;
+	
+	this.dataCollected=[];
+	if (head) {
+		this.dataCollected.push(head);
+	}
+	this.dataCollector=function(data) {
+		self.dataCollected.push(data);
+	}
+	this.socket.on("data",this.dataCollector);
 }
 WebSocketResponse.prototype=new EEBase();
 WebSocketResponse.prototype.readyState="opening";
@@ -129,7 +139,7 @@ WebSocketResponse.prototype.writeHead=function(code,headers) {
 }
 function wireupWebsocketEvents(self,socket) {
 	var incoming=[],
-		totalLen=0,
+		totalLen=incoming.reduce(function(prev,cur) { return prev+cur.length; },0),
 		queue=[],
 		paused=false;
 	self.pause=function() {
@@ -183,10 +193,7 @@ function wireupWebsocketEvents(self,socket) {
 		}
 		return output;
 	}
-	function onData(data) {
-		var b,i,bi,packetType;
-		incoming.push(data);
-		totalLen+=data.length;
+	function parseData() {
 		while (true) {
 			if (incoming.length==0)
 				break;
@@ -203,6 +210,7 @@ function wireupWebsocketEvents(self,socket) {
 				while (b<incoming.length) {
 					if (incoming[b][bi]==0xFF) {
 						onPacket(packetType,extractSimplePacket(incoming,i-1));
+						totalLen-=i+1;
 						break;
 					}
 					i++;
@@ -214,6 +222,12 @@ function wireupWebsocketEvents(self,socket) {
 				}
 			}
 		}
+	}
+	function onData(data) {
+		var b,i,bi,packetType;
+		incoming.push(data);
+		totalLen+=data.length;
+		parseData();
 	}
 	function onEnd() {
 		var args=["end"].concat(Array.prototype.slice.call(arguments));
@@ -238,24 +252,26 @@ function wireupWebsocketEvents(self,socket) {
 		self.readable=false;
 		self.emit.apply(self,args);
 	}
+	socket.removeListener("data",self.dataCollector);
+	incoming=incoming.concat(self.dataCollected);
 	socket.on("data",onData);
 	socket.on("end",onEnd);
 	socket.on("timeout",onTimeout);
 	socket.on("drain",onDrain);
 	socket.on("error",onError);
 	socket.on("close",onClose);
+	parseData();
 }
 WebSocketResponse.prototype.accept=function(protocol,headers) {
-	var headername,headervalue,handshake;
+	var headername,headervalue,handshake,self=this;
 	if (this.type!==responseTypes.none) {
 		throw new Error("Response already started");
 	}
 	this.type=responseTypes.websocket;
+	this.readyState="opening";
 	var response="HTTP/"+this.request.httpVersion+" 101 WebSocket Protocol Handshake\r\n"+
 		"Upgrade: WebSocket\r\n"+
 		"Connection: Upgrade\r\n";
-	this.readyState="open";
-	this.readable=this.writeable=true;
 	if (this.handshakeData) {
 		response+="Sec-WebSocket-Origin: "+(this.request.headers["Origin"] || this.request.headers["origin"] || "")+"\r\n"+
 			"Sec-WebSocket-Location: ws://"+(this.request.headers["Host"] || this.request.headers["host"] || "")+this.request.url+"\r\n"+
@@ -297,7 +313,14 @@ WebSocketResponse.prototype.accept=function(protocol,headers) {
 		this.socket.write(response,"ascii");
 	}
 	//Wire the whole thing up
-	wireupWebsocketEvents(this,this.socket);
+	process.nextTick(function() {
+		if (self.readyState==="opening" && self.type===responseTypes.websocket) {
+			self.readyState="open";
+			self.readable=self.writeable=true;
+			self.emit("connect");
+			wireupWebsocketEvents(self,self.socket);
+		}
+	});
 }
 WebSocketResponse.prototype.write=function() {
 	switch (this.type) {
@@ -305,6 +328,9 @@ WebSocketResponse.prototype.write=function() {
 			throw new Error("Call .accept or .writeHead first");
 			break;
 		case responseTypes.websocket:{
+			if (!this.writeable) {
+				throw new Error("Not writeable. (wait for 'connect' event?)");
+			}
 			var buf=(arguments[0] instanceof Buffer)?arguments[0]:(arguments.length>1?new Buffer(arguments[0],arguments[1]):new Buffer(arguments[0]));
 			var utf8Encoded=buf.toString("utf8");
 			var sendBuf=new Buffer(utf8Encoded.length+2);

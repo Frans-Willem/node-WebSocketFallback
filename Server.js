@@ -47,13 +47,15 @@ wss.on("request",function(req,res) {
 	//After an accept, a WebSocketResponse will act as a net.Stream
 	//Arguments: protocol, headers
 	res.accept("sample",{});
-	setTimeout(function() {
-		sys.puts("Write");
-		res.write("Hello world");
-		sys.puts("Wrote");
-	},200);
-	res.on("data",function(data) {
-		sys.puts("Data: '"+data.toString()+"'");
+	res.on("connect",function() {
+		setTimeout(function() {
+			sys.puts("Write");
+			res.write("Hello world");
+			sys.puts("Wrote");
+		},200);
+		res.on("data",function(data) {
+			sys.puts("Data: '"+data.toString()+"'");
+		});
 	});
 });
 
