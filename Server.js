@@ -52,10 +52,15 @@ wss.on("request",function(req,res) {
 		sys.puts("Connected");
 		setTimeout(function() {
 			sys.puts("Sending 'Hello world'");
-			res.write("Hello world");
+			res.write("Hello world\uFFFF","utf8");
 		},200);
 		res.on("data",function(data) {
-			sys.puts("Data: '"+data.toString()+"'");
+			sys.puts("DataLen: "+data.length);
+			data=data.toString("utf8");
+			sys.puts("Data: '"+data.substr(0,data.length-1)+"' "+data.charCodeAt(data.length-1).toString(16));
+			if (data[0]==="M") {
+				res.write("Mecho: "+data.substr(0,data.length-1),"utf8");
+			}
 		});
 	});
 });

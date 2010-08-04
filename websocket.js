@@ -331,12 +331,16 @@ WebSocketResponse.prototype.write=function() {
 			if (!this.writeable) {
 				throw new Error("Not writeable. (wait for 'connect' event?)");
 			}
-			var buf=(arguments[0] instanceof Buffer)?arguments[0]:(arguments.length>1?new Buffer(arguments[0],arguments[1]):new Buffer(arguments[0]));
-			var utf8Encoded=buf.toString("utf8");
-			var sendBuf=new Buffer(utf8Encoded.length+2);
+			var buf=(arguments[0] instanceof Buffer)?arguments[0]:(arguments.length>1?new Buffer(arguments[0],arguments[1]):new Buffer(arguments[0],"utf8"));
+			var sendBuf=new Buffer(buf.length+2);
+			for (var i=0; i<buf.length; i++) {
+				if (buf[i]==0xFF) {
+					throw new Error("terminator byte (0xFF) found in data, unable to send a string. Did you use 'utf8' encoding?");
+				}
+			}
 			sendBuf[0]=0x00;
-			sendBuf.write(utf8Encoded,1,"binary");
-			sendBuf[utf8Encoded.length+1]=0xFF;
+			buf.copy(sendBuf,1,0,buf.length);
+			sendBuf[sendBuf.length-1]=0xFF;
 			return this.socket.write(sendBuf);
 			break;
 		}

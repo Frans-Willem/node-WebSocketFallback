@@ -13,12 +13,12 @@ window.onload=function() {
 		ws.send("Multiple packets");
 		var pack=1;
 		setInterval(function() {
-			ws.send("Multiple packets delayed "+(pack++));
+			ws.send("Multiple packets delayed "+(pack++)+"\uFFFF");
 		},250);
 	}
 	ws.onmessage=function(event) {
 		log("onMessage",arguments.length,event.data);
-		ws.send("Echo: "+event.data);
+		ws.send("Echo: "+event.data+"\uFFFF");
 	}
 	ws.onerror=function(event) {
 		log("onError");
