@@ -271,9 +271,7 @@
 			if (err!==undefined || i>=funcs.length) {
 				callback.apply({},Array.prototype.slice.call(arguments,0));
 			} else {
-				args=Array.prototype.slice.call(arguments,1);
-				args.push(next);
-				funcs[i++].apply({},args);
+				funcs[i++].apply(next,Array.prototype.slice.call(arguments,1));
 			}
 		}
 		next(undefined);
@@ -305,7 +303,7 @@
 			}
 		}
 		for (i=0; i<arguments.length-1; i++) {
-			arguments[i].call({},createCallback(i));
+			arguments[i].call(createCallback(i));
 		}
 	}
 	
@@ -428,7 +426,7 @@
 		
 		//Initialization sequence
 		QuickChain(
-			function(callback) {
+			function() {
 				//Step 1: Create a multipart puller
 				var puller=new MultipartJsonPuller("GET",createPullUrl(),null);
 				//Step 1b: Create a close function for during initialization
@@ -443,20 +441,20 @@
 					bufferedAmount+=s.length;
 					sendQueue.push(s);
 				}
-				callback(undefined,puller);
+				this(undefined,puller);
 			},
-			function(puller,callback) {
+			function(puller) {
 				//Wait 5 seconds for one probe message
-				getProbeMessage(puller,5000,QuickPrefix(callback,puller));
+				getProbeMessage(puller,5000,QuickPrefix(this,puller));
 			},
-			function(puller,callback) {
+			function(puller) {
 				//Wait 5 seconds for one welcome message
-				getWelcomeMessage(puller,5000,QuickPrefix(callback,puller));
+				getWelcomeMessage(puller,5000,QuickPrefix(this,puller));
 			},
-			function(puller,id,secret,responseProtocol,callback) {
+			function(puller,id,secret,responseProtocol) {
 				//Check protocol
 				if (protocol && protocol!=responseProtocol) {
-					callback("Protocol does not match");
+					this("Protocol does not match");
 					return;
 				}
 				//Because the getProbeMessage listeners can return earlier than the simpleHttpRequest, collect any messages that slip through in that time.
@@ -468,18 +466,18 @@
 				//	Send a probe
 				//	Wait for response probe
 				QuickPar(
-					function(callback) {
-						return getProbeMessage(puller,5000,callback);
+					function() {
+						return getProbeMessage(puller,5000,this);
 					},
-					function(callback) {
+					function() {
 						simpleHttpRequest(
 							"POST",
 							createSendUrl(id,secret),
 							"{\"t\":"+messageTypes.probe+"}\n",
 							5000,
-							callback);
+							this);
 					},
-					QuickPrefix(callback,puller,collected,id,secret,responseProtocol)
+					QuickPrefix(this,puller,collected,id,secret,responseProtocol)
 				);
 			},
 			function(err,puller,collected,id,secret,protocol) {
