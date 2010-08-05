@@ -1,9 +1,12 @@
 require.paths.unshift(__dirname+"/../RequestRouter");
+require.paths.unshift(__dirname+"/../IPCNode");
 var sys=require("sys");
 var http=require("http");
 var fs=require("fs");
 var RequestRouter=require("RequestRouter");
 var ws=require("./server/transports/websocket");
+var xms=require("./server/transports/xhrmultipart");
+var URL=require("url");
 
 function fileReader(fname,mime) {
 	return function(req,res,unparsed) {
@@ -21,7 +24,9 @@ var httpRoot={
 	index: 'index.html',
 	children: {
 		'index.html': {callback: fileReader("index.html","text/html")},
-		'index.js': {callback: fileReader("index.js","text/javascript")}
+		'index.js': {callback: fileReader("index.js","text/javascript")},
+		'transport.js': {callback: fileReader("client/transports/xhrmultipart.js","text/javascript")},
+		'connectHere': {callback: processRequest}
 	}
 };
 
@@ -31,13 +36,18 @@ var upgradeRoot={
 	}
 };
 
+var xmss=xms.createServer();
 var wss=ws.createServer();
 function processUpgrade() {
 	return wss.handleRequest.apply(wss,Array.prototype.slice.call(arguments));
 }
 
-wss.on("request",function(req,res) {
-	if (req.url!="/connectHere") {
+function processRequest() {
+	xmss.handleRequest.apply(xmss,Array.prototype.slice.call(arguments));
+}
+
+function socketRequestHandler(req,res) {
+	if (URL.parse(req.url).pathname!="/connectHere") {
 		var msg=http.STATUS_CODES[404] || "unknown";
 		//After a writeHead, a WebSocketResponse will act as a http.ServerResponse
 		res.writeHead(404,{"Content-Type":"text/plain","Content-Length":msg.length});
@@ -50,10 +60,10 @@ wss.on("request",function(req,res) {
 	res.accept("sample",{});
 	res.on("connect",function() {
 		sys.puts("Connected");
-		setTimeout(function() {
+		//setTimeout(function() {
 			sys.puts("Sending 'Hello world'");
 			res.write("Hello world\uFFFF","utf8");
-		},200);
+		//},200);
 		res.on("data",function(data) {
 			sys.puts("DataLen: "+data.length);
 			data=data.toString("utf8");
@@ -63,7 +73,10 @@ wss.on("request",function(req,res) {
 			}
 		});
 	});
-});
+}
+
+wss.on("request",socketRequestHandler);
+xmss.on("request",socketRequestHandler);
 
 var server=http.createServer(RequestRouter.createRequestHandler(httpRoot));
 server.on("upgrade",RequestRouter.createUpgradeHandler(upgradeRoot));

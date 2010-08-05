@@ -95,6 +95,12 @@ function WebSocketRequest(request) {
 	this.headers=request.headers;
 	this.httpVersion=request.httpVersion;
 	this.connection=request.connection;
+	this.protocol=
+		this.headers["WebSocket-Protocol"] ||
+		this.headers["Sec-WebSocket-Protocol"] ||
+		this.headers["websocket-protocol"] ||
+		this.headers["sec-websocket-protocol"] ||
+		"";
 }
 
 var responseTypes={
@@ -245,11 +251,13 @@ function wireupWebsocketEvents(self,socket) {
 	function onError() {
 		var args=["error"].concat(Array.prototype.slice.call(arguments));
 		self.readable=false;
+		self.writeable=false;
 		self.emit.apply(self,args);
 	}
 	function onClose(had_error) {
 		var args=["close"].concat(Array.prototype.slice.call(arguments));
 		self.readable=false;
+		self.writeable=false;
 		self.emit.apply(self,args);
 	}
 	socket.removeListener("data",self.dataCollector);
