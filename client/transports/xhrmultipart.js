@@ -395,6 +395,11 @@
 			sendQueue=[],
 			closeCallback=undefined,
 			sendCallback=undefined;
+		if (url.substr(0,5).toLowerCase()=="ws://") {
+			url="http://"+url.substr(5);
+		} else if (url.substr(0,6).toLowerCase()==="wss://") {
+			url="https://"+url.substr(6);
+		}
 		
 		self.close=function() {
 			return closeCallback.apply(this,arguments);
@@ -428,6 +433,7 @@
 				var puller=new MultipartJsonPuller("GET",createPullUrl(),null);
 				//Step 1b: Create a close function for during initialization
 				closeCallback=function() {
+					self.readyState=self.CLOSING;
 					aborted=true;
 					puller.close();
 				}
@@ -479,13 +485,12 @@
 			function(err,puller,collected,id,secret,protocol) {
 				var i;
 				if (err || !puller.connected) {
-					window.log("Error!: "+err);
 					self.readyState=self.CLOSED;
 					if (!aborted && typeof(self.onerror)=="function") {
 						self.onerror({message:err});
 					}
 					if (typeof(self.onclose)=="function") {
-						self.onclose({was_clean:false});
+						self.onclose({was_clean:aborted});
 					}
 				} else {
 					var open=true;
