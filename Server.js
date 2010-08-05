@@ -3,7 +3,7 @@ var sys=require("sys");
 var http=require("http");
 var fs=require("fs");
 var RequestRouter=require("RequestRouter");
-var ws=require("./websocket");
+var ws=require("./server/transports/websocket");
 
 function fileReader(fname,mime) {
 	return function(req,res,unparsed) {
