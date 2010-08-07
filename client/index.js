@@ -13,12 +13,14 @@ window.onload=function() {
 	log("Connecting to "+document.location.protocol+"//"+document.location.host+"/connectHere with "+ws.constructor.name);
 	var interval;
 	ws.onopen=function(event) {
-		log("onOpen",arguments.length);
+		log("onOpen",arguments.length,ws);
 		ws.send("Multiple packets");
+		log("send called");
 		var pack=1;
 		interval=setInterval(function() {
 			ws.send("Multiple packets delayed "+(pack++)+"\uFFFF");
 		},250);
+		log("Done");
 	}
 	var received=0;
 	ws.onmessage=function(event) {
@@ -31,7 +33,7 @@ window.onload=function() {
 		ws.send("Echo: "+event.data+"\uFFFF");
 	}
 	ws.onerror=function(event) {
-		log("onError");
+		log("onError: "+event.message);
 	}
 	ws.onclose=function(event) {
 		log("onClose",arguments.length,event.wasClean);

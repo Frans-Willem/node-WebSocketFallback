@@ -31,22 +31,30 @@
 	}
 	
 	function JSONParse(data) {
-		if (JSON && JSON.parse)
-			return JSON.parse(data);
-		return eval(data);
+		if (typeof(JSON)==="object") {
+			if (typeof(JSON.parse)==="function") {
+				return JSON.parse(data);
+			}
+		}
+		return eval("(function() { return "+data+"; })();");
 	}
 	
 	function encodeString(str) {
 		str=str.toString();
-		if (JSON && JSON.stringify)
-			return JSON.stringify(str);
-		var unsafe=/[^a-zA-Z0-9\w]/g;
+		if (typeof(JSON)==="object") {
+			if (typeof(JSON.stringify)==="function") {
+				return JSON.stringify(str);
+			}
+		}
+		var unsafe=/[^a-zA-Z0-9\W]/g;
 		var hex="0123456789ABCDEF";
 		function escaper(chr) {
 			chr=chr.charCodeAt(0);
-			if (chr<=0xFF)
-				return "\\x"+hex[(chr >> 4)&0xF]+hex[(chr >> 0)&0xF]
-			else "\\u"+hex[(chr >> 12)&0xF]+hex[(chr >> 8)&0xF]+hex[(chr >> 4)&0xF]+hex[(chr >> 0)&0xF]
+			if (chr<=0xFF && false) { //NOTE: JSON doesn't supported \x escape codes
+				return "\\x"+hex.charAt((chr >> 4)&0xF)+hex.charAt((chr >> 0)&0xF);
+			} else {
+				return "\\u"+hex.charAt((chr >> 12)&0xF)+hex.charAt((chr >> 8)&0xF)+hex.charAt((chr >> 4)&0xF)+hex.charAt((chr >> 0)&0xF);
+			}
 		}
 		return "\""+str.replace(unsafe,escaper)+"\"";
 	}
@@ -131,7 +139,7 @@
 			catch(e) {
 				closed=true;
 				self.connected=false;
-				self.onclosed("JSONParse: "+e.toString());
+				self.onclosed("JSONParse: "+e.message);
 				return;
 			}
 			if (typeof(obj)!="object") {
@@ -145,7 +153,6 @@
 			simpleHttpRequest("GET",createPollUrl(),null,70000,onPollCallback);
 		}
 		function onPollCallback(err,pollData) {
-			window.log("Got poll");
 			if (closed) {
 				return;
 			}
@@ -167,7 +174,6 @@
 				}
 			}
 			if (!closed) {
-				window.log("New poll");
 				simpleHttpRequest("GET",createPollUrl(),null,70000,onPollCallback);
 			}
 		}
@@ -230,7 +236,6 @@
 						obj=JSONParse(line);
 					}
 					catch(e) {
-						window.log("JSONParse: "+e.toString());
 						closed=true;
 						self.connected=false;
 						puller.close();
@@ -536,13 +541,16 @@
 							function(err) {
 								if (err!==undefined) {
 									if (self.readyState!==self.CLOSED) {
-										self.readyState==self.CLOSED;
+										self.readyState=self.CLOSED;
 										if (typeof(self.onerror)==="function") {
-											self.onerror({});
+											self.onerror({message:err});
 										}
 										if (typeof(self.onclose)==="function") {
 											self.onclose({was_clean: false});
 										}
+									}
+									if (puller.connected) {
+										puller.close();
 									}
 								} else {
 									sending=false;
@@ -568,7 +576,7 @@
 						if (self.readyState!=self.CLOSED) {
 							self.readyState=self.CLOSED;
 							if (err!==undefined && typeof(self.onerror)=="function") {
-								self.onerror({});
+								self.onerror({message:err});
 							}
 							if (typeof(self.onclose)=="function") {
 								self.onclose({was_clean: (err==undefined)});

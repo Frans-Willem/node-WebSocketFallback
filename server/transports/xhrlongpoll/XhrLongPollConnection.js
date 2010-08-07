@@ -115,6 +115,7 @@ XhrLongPollConnection.prototype.handlePollRequest=function(request,response,qs) 
 		previousPoll.end("");
 	}
 	if (self.queue.length>0) {
+		sys.puts("LongPoll: Flushing");
 		response.writeHead(200,{"Content-Type":self.contentType,"Content-Length":self.queue.reduce(function(prev,cur) { return prev+cur.length; },0)});
 		self.queue.forEach(function(data) {
 			response.write(data);

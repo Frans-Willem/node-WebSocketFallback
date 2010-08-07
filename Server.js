@@ -33,8 +33,8 @@ function fileReader(fname,mime) {
 var httpRoot={
 	index: 'index.html',
 	children: {
-		'index.html': {callback: fileReader("index.html","text/html")},
-		'index.js': {callback: fileReader("index.js","text/javascript")},
+		'index.html': {callback: fileReader("client/index.html","text/html")},
+		'index.js': {callback: fileReader("client/index.js","text/javascript")},
 		'xhrmultipart.js': {callback: fileReader("client/transports/xhrmultipart.js","text/javascript")},
 		'xhrlongpoll.js': {callback: fileReader("client/transports/xhrlongpoll.js","text/javascript")},
 		'connectHere': {callback: processRequest}
