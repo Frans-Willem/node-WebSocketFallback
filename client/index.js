@@ -7,9 +7,10 @@ function log() {
 window.log=log;
 
 window.onload=function() {
-	log("Connecting to "+document.location.protocol+"//"+document.location.host+"/connectHere");
-	var ws=new XhrMultipartSocket(document.location.protocol+"//"+document.location.host+"/connectHere","sample");
-	//var ws=new WebSocket("ws://"+document.location.host+"/connectHere","sample");
+	var ws=new WebSocket("ws://"+document.location.host+"/connectHere","sample");
+	//var ws=new XhrMultipartSocket("ws://"+document.location.host+"/connectHere","sample");
+	//var ws=new XhrLongpollSocket("ws://"+document.location.host+"/connectHere","sample");
+	log("Connecting to "+document.location.protocol+"//"+document.location.host+"/connectHere with "+ws.constructor.name);
 	var interval;
 	ws.onopen=function(event) {
 		log("onOpen",arguments.length);

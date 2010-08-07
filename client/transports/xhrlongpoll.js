@@ -51,109 +51,165 @@
 		return "\""+str.replace(unsafe,escaper)+"\"";
 	}
 	
+	function simpleHttpRequest(method,url,sendData,timeout,callback) {
+		var xhr=createXhr(),
+			response,
+			success=false,
+			timer;
+		if (timeout>0) {
+			timer=setTimeout(function() {
+				xhr.onreadystatechange=function(){};
+				xhr.abort();
+				callback("Timed out");
+			},timeout);
+		}
+		xhr.open(method,url,true);
+		xhr.send(sendData);
+		xhr.onreadystatechange=function() {
+			if (xhr.readyState==4) {
+				if (timer!==undefined) {
+					clearTimeout(timer);
+				}
+				xhr.onreadystatechange=function() {};
+				if (xhr.status==200) {
+					try {
+						response=xhr.responseText;
+						success=true;
+					}
+					catch(e) {
+						callback("Error: "+e.toString());
+					}
+					if (success) {
+						setTimeout(function() {
+							callback(undefined,response);
+						},500);
+					}
+				} else {
+					callback("HTTP Error: "+xhr.status);
+				}
+			}
+		}
+	}
+	
 	/**
-	 * MultipartPoller: class to simplify multipart XMLHttpRequest pulling.
+	 * LongpollPoller: class to simplify multipart XMLHttpRequest pulling.
 	 * @author fw@hardijzer.nl
 	 * @param {method} any method supported by XMLHttpRequest (e.g. "GET", "POST")
 	 * @param {url} URL
 	 * @param {sendData} POST data, or null if none.
 	 * @constructor
 	 */
-	function MultipartPoller(method,url,sendData) {
-		var xhr=createXhr(),
-			parsed=0,
+	function LongpollPoller(method,url,protocol,sendData) {
+		var parsed=0,
 			closed=false,
 			self=this,
-			hadData=false;
+			hadData=false,
+			id,
+			secret;
 		self.connected=true;
-		xhr.open(method,url,true);
-		xhr.send(sendData);
-		xhr.onreadystatechange=function() {
-			var response,data;
-			if (closed) {
-				//Ignore
-				return;
-			}
-			if (xhr.readyState==4) {
+		
+		function createConnectUrl() {
+			return url+((url.indexOf("?")==-1)?"?":"&")+"xhrl_type=connect&xhrl_protocol="+escape(protocol)+"&xhrl_random="+escape(Math.random());
+		}
+		function createPollUrl() {
+			return url+((url.indexOf("?")==-1)?"?":"&")+"xhrl_type=poll&xhrl_id="+escape(id)+"&xhrl_secret="+escape(secret)+"&xhrl_random="+escape(Math.random());
+		}
+		
+		simpleHttpRequest("GET",createConnectUrl(),null,10000,onConnectCallback);
+		
+		function onConnectCallback(err,connectData) {
+			var obj;
+			if (err) {
 				closed=true;
 				self.connected=false;
-				self.onclosed((xhr.status==200 || (xhr.status==0 && hadData))?undefined:("HTTP Status code "+xhr.status));
-			} else if (xhr.readyState==3) {
+				self.onclosed(err);
+				return;
+			}
+			try {
+				obj=JSONParse(connectData);
+			}
+			catch(e) {
+				closed=true;
+				self.connected=false;
+				self.onclosed("JSONParse: "+e.toString());
+				return;
+			}
+			if (typeof(obj)!="object") {
+				closed=true;
+				self.connected=false;
+				self.onclosed("onConnect: Expected object");
+				return;
+			}
+			id=obj.id;
+			secret=obj.secret;
+			simpleHttpRequest("GET",createPollUrl(),null,70000,onPollCallback);
+		}
+		function onPollCallback(err,pollData) {
+			window.log("Got poll");
+			if (closed) {
+				return;
+			}
+			if (err) {
+				closed=true;
+				self.connected=false;
+				self.onclosed(err);
+				return;
+			}
+			if (pollData.length>0) {
 				try {
-					response=xhr.responseText;
-					if (response.length>parsed) {
-						data=response.substr(parsed);
-						parsed=response.length;
-					}
-					hadData=true;
+					self.ondata(pollData);
 				}
 				catch(e) {
 					closed=true;
 					self.connected=false;
-					self.onclosed(e.toString());
+					self.onclosed("ondata error: "+e.toString());
+					self.close();
 				}
-				if (data!==undefined) {
-					try {
-						self.ondata(data);
-					}
-					catch(e) {
-						closed=true;
-						self.connected=false;
-						self.onclosed("ondata error: "+e.toString());
-						self.close();
-					}
-				}
+			}
+			if (!closed) {
+				window.log("New poll");
+				simpleHttpRequest("GET",createPollUrl(),null,70000,onPollCallback);
 			}
 		}
 		
 		/**
 		 * If not closed already, close the connection and emit .onclose(undefined)
 		 * @author fw@hardijzer.nl
-		 * @member MultipartPoller
+		 * @member LongpollPoller
 		 */
 		this.close=function() {
-			var oldxhr=xhr;
 			if (!closed) {
 				closed=true;
 				self.connected=false;
 				self.onclosed(undefined);
 			}
-			if (oldxhr) {
-				xhr=undefined;
-				oldxhr.onreadystatechange=function(){};
-				setTimeout(function() {
-					if (oldxhr.readyState!=4)
-						oldxhr.abort();
-					xhr=undefined;
-				},1);
-			}
 		}
 	}
 	/**
 	 * Event on new data received
-	 * @member MultipartPoller
+	 * @member LongpollPoller
 	 * @author fw@hardijzer.nl
 	 * @param {data} String containing new data
 	 */
-	MultipartPoller.prototype.ondata=function(data) {};
+	LongpollPoller.prototype.ondata=function(data) {};
 	/**
 	 * Event on new data received
-	 * @member MultipartPoller
+	 * @member LongpollPoller
 	 * @author fw@hardijzer.nl
 	 * @param {error} undefined or error string
 	 */
-	MultipartPoller.prototype.onclosed=function(error) {};
+	LongpollPoller.prototype.onclosed=function(error) {};
 	
 	
 	/**
-	 * MultipartJsonPoller, similar to MultipartPoller, but ondata event now gets an object.
+	 * LongpollJsonPoller, similar to LongpollPoller, but ondata event now gets an object.
 	 * @author fw@hardijzer.nl
-	 * @see MultipartPoller
+	 * @see LongpollPoller
 	 * @constructor
 	 */
-	function MultipartJsonPoller(method,url,sendData) {
+	function LongpollJsonPoller(method,url,protocol,sendData) {
 			var self=this,
-				puller=new MultipartPoller(method,url,sendData),
+				puller=new LongpollPoller(method,url,protocol,sendData),
 				closed=false,
 				buffer="";
 			self.connected=true;
@@ -174,6 +230,7 @@
 						obj=JSONParse(line);
 					}
 					catch(e) {
+						window.log("JSONParse: "+e.toString());
 						closed=true;
 						self.connected=false;
 						puller.close();
@@ -216,48 +273,8 @@
 				puller.close();
 			}
 	}
-	MultipartJsonPoller.prototype.ondata=function(obj){};
-	MultipartJsonPoller.prototype.onclosed=function(error){};
-	
-	function simpleHttpRequest(method,url,sendData,timeout,callback) {
-		var xhr=createXhr(),
-			response,
-			success=false,
-			timer;
-		if (timeout>0) {
-			timer=setTimeout(function() {
-				xhr.onreadystatechange=function(){};
-				xhr.abort();
-				callback("Timed out");
-			},timeout);
-		}
-		xhr.open(method,url,true);
-		xhr.send(sendData);
-		xhr.onreadystatechange=function() {
-			if (xhr.readyState==4) {
-				if (timer!==undefined) {
-					clearTimeout(timer);
-				}
-				xhr.onreadystatechange=function() {};
-				if (xhr.status==200) {
-					try {
-						response=xhr.responseText;
-						success=true;
-					}
-					catch(e) {
-						callback("Error: "+e.toString());
-					}
-					if (success) {
-						setTimeout(function() {
-							callback(undefined,response);
-						},500);
-					}
-				} else {
-					callback("HTTP Error: "+xhr.status);
-				}
-			}
-		}
-	}
+	LongpollJsonPoller.prototype.ondata=function(obj){};
+	LongpollJsonPoller.prototype.onclosed=function(error){};
 	
 	/**
 	 * QuickChain
@@ -387,7 +404,7 @@
 		);
 	}
 
-	function XhrMultipartSocket(url,protocol) {
+	function XhrLongpollSocket(url,protocol) {
 		var self=this,
 			connected=false,
 			aborted=false,
@@ -410,26 +427,23 @@
 			
 		function createPollUrl() {
 			return url+((url.indexOf("?")==-1)?"?":"&")+
-					"fallback_transport=xhrm"+
-					"&xhrm_type=connect"+
-					"&xhrm_protocol="+escape(protocol)+
-					"&xhrm_random="+escape(Math.random());
+					"fallback_transport=xhrl";
 		}
 		
 		function createPushUrl(id,secret) {
 			return url+((url.indexOf("?")==-1)?"?":"&")+
-					"fallback_transport=xhrm"+
-					"&xhrm_type=push"+
-					"&xhrm_id="+escape(id)+
-					"&xhrm_secret="+escape(secret)+
-					"&xhrm_random="+escape(Math.random());
+					"fallback_transport=xhrl"+
+					"&xhrl_type=push"+
+					"&xhrl_id="+escape(id)+
+					"&xhrl_secret="+escape(secret)+
+					"&xhrl_random="+escape(Math.random());
 		}
 		
 		//Initialization sequence
 		QuickChain(
 			function() {
 				//Step 1: Create a multipart puller
-				var puller=new MultipartJsonPoller("GET",createPollUrl(),null);
+				var puller=new LongpollJsonPoller("GET",createPollUrl(),protocol,null);
 				//Step 1b: Create a close function for during initialization
 				closeCallback=function() {
 					self.readyState=self.CLOSING;
@@ -586,16 +600,16 @@
 			}
 		)
 	}
-	XhrMultipartSocket.prototype.CONNECTING=0;
-	XhrMultipartSocket.prototype.OPEN=1;
-	XhrMultipartSocket.prototype.CLOSING=2;
-	XhrMultipartSocket.prototype.CLOSED=3;
-	XhrMultipartSocket.prototype.readyState=XhrMultipartSocket.prototype.CONNECTING;
-	XhrMultipartSocket.prototype.protocol="";
-	XhrMultipartSocket.prototype.bufferedAmount=0;
+	XhrLongpollSocket.prototype.CONNECTING=0;
+	XhrLongpollSocket.prototype.OPEN=1;
+	XhrLongpollSocket.prototype.CLOSING=2;
+	XhrLongpollSocket.prototype.CLOSED=3;
+	XhrLongpollSocket.prototype.readyState=XhrLongpollSocket.prototype.CONNECTING;
+	XhrLongpollSocket.prototype.protocol="";
+	XhrLongpollSocket.prototype.bufferedAmount=0;
 	
-	XhrMultipartSocket.prototype.send=function(data) {}; //Stub
-	XhrMultipartSocket.prototype.close=function() {}; //Stub
+	XhrLongpollSocket.prototype.send=function(data) {}; //Stub
+	XhrLongpollSocket.prototype.close=function() {}; //Stub
 	
-	window.XhrMultipartSocket=XhrMultipartSocket;
+	window.XhrLongpollSocket=XhrLongpollSocket;
 })();

@@ -6,7 +6,17 @@ var fs=require("fs");
 var RequestRouter=require("RequestRouter");
 var ws=require("./server/transports/websocket");
 var xms=require("./server/transports/xhrmultipart");
+var xls=require("./server/transports/xhrlongpoll");
 var URL=require("url");
+var querystring=require("querystring");
+
+function sendCodeResponse(res,code,message) {
+	var msg=http.STATUS_CODES[code];
+	var body="<html><head><title>"+code+": "+msg+"</title><head><body><h1>"+code+": "+msg+"</h1>"+(message?("<p>"+message+"</p>"):"")+"</body></html>";
+	res.writeHead(code,{"Content-Type":"text/html","Content-Length":body.length});
+	res.write(body);
+	res.end();
+}
 
 function fileReader(fname,mime) {
 	return function(req,res,unparsed) {
@@ -25,7 +35,8 @@ var httpRoot={
 	children: {
 		'index.html': {callback: fileReader("index.html","text/html")},
 		'index.js': {callback: fileReader("index.js","text/javascript")},
-		'transport.js': {callback: fileReader("client/transports/xhrmultipart.js","text/javascript")},
+		'xhrmultipart.js': {callback: fileReader("client/transports/xhrmultipart.js","text/javascript")},
+		'xhrlongpoll.js': {callback: fileReader("client/transports/xhrlongpoll.js","text/javascript")},
 		'connectHere': {callback: processRequest}
 	}
 };
@@ -37,13 +48,22 @@ var upgradeRoot={
 };
 
 var xmss=xms.createServer();
+var xlss=xls.createServer();
 var wss=ws.createServer();
 function processUpgrade() {
 	return wss.handleRequest.apply(wss,Array.prototype.slice.call(arguments));
 }
 
-function processRequest() {
-	xmss.handleRequest.apply(xmss,Array.prototype.slice.call(arguments));
+function processRequest(request,response) {
+	var q=querystring.parse(URL.parse(request.url).query || "");
+	switch (q.fallback_transport) {
+		case "xhrl": return xlss.handleRequest.apply(xlss,Array.prototype.slice.call(arguments));
+		case "xhrm": return xmss.handleRequest.apply(xmss,Array.prototype.slice.call(arguments));
+		default: {
+			sys.puts("Unknown transport: "+q.fallback_transport+" "+URL.parse(request.url).query);
+			return sendCodeResponse(response,500);
+		}
+	}
 }
 
 function socketRequestHandler(req,res) {
@@ -65,7 +85,6 @@ function socketRequestHandler(req,res) {
 			res.write("Hello world\uFFFF","utf8");
 		//},200);
 		res.on("data",function(data) {
-			sys.puts("DataLen: "+data.length);
 			data=data.toString("utf8");
 			sys.puts("Data: '"+data.substr(0,data.length-1)+"' "+data.charCodeAt(data.length-1).toString(16));
 			if (data[0]==="M") {
@@ -77,6 +96,7 @@ function socketRequestHandler(req,res) {
 
 wss.on("request",socketRequestHandler);
 xmss.on("request",socketRequestHandler);
+xlss.on("request",socketRequestHandler);
 
 var server=http.createServer(RequestRouter.createRequestHandler(httpRoot));
 server.on("upgrade",RequestRouter.createUpgradeHandler(upgradeRoot));
